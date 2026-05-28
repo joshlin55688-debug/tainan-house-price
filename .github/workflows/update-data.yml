@@ -1,0 +1,50 @@
+name: Refresh LVR data
+
+on:
+  schedule:
+    # 每月 1、11、21 日 02:00 (UTC+8) = 18:00 UTC (前一天)
+    - cron: "0 18 2,12,22 * *"
+  workflow_dispatch:        # 可手動觸發
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Fetch latest LVR data
+        run: |
+          # 清掉快取確保抓新檔
+          rm -rf data/raw
+          python scripts/fetch_data.py
+
+      - name: Show diff summary
+        run: |
+          git diff --stat data/transactions.json || true
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/transactions.json
+          if git diff --cached --quiet; then
+            echo "No changes — nothing to commit."
+          else
+            COUNT=$(python -c "import json; print(json.load(open('data/transactions.json', encoding='utf-8'))['count'])")
+            LATEST=$(python -c "import json; print(json.load(open('data/transactions.json', encoding='utf-8'))['latest_date'])")
+            git commit -m "chore: refresh LVR data ($COUNT rows, latest $LATEST)"
+            git push
+          fi
