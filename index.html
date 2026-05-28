@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>台南房屋成交價查詢</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --border: #e4e6eb;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-soft: #dbeafe;
+    --success: #10b981;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+  }
+  header {
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    color: white;
+    padding: 18px 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header .sub { font-size: 12px; opacity: 0.85; margin-top: 4px; }
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 16px;
+    padding: 16px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .filters { position: static !important; }
+  }
+  .filters {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+  }
+  .filters h2 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .filter-group { margin-bottom: 14px; }
+  .filter-group label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+  .filter-group input[type="text"],
+  .filter-group input[type="date"],
+  .filter-group input[type="number"],
+  .filter-group select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .filter-group input:focus, .filter-group select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .range-row { display: flex; gap: 6px; align-items: center; }
+  .range-row input { flex: 1; min-width: 0; }
+  .range-row .sep { color: var(--muted); font-size: 12px; }
+  .district-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px;
+    background: #fafbfc;
+  }
+  .district-grid label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+    margin: 0;
+    padding: 2px 4px;
+    border-radius: 3px;
+  }
+  .district-grid label:hover { background: var(--accent-soft); }
+  .district-grid input { margin: 0; }
+  .filter-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    font-weight: 500;
+  }
+  .btn-primary { background: var(--accent); color: white; flex: 1; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-ghost { background: #f3f4f6; color: var(--text); }
+  .btn-ghost:hover { background: #e5e7eb; }
+  .btn-link {
+    background: transparent;
+    color: var(--accent);
+    padding: 2px 6px;
+    font-size: 11px;
+  }
+  .btn-export {
+    background: var(--success);
+    color: white;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  .btn-export:hover { background: #059669; }
+  .main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .stat-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .card .lbl { font-size: 12px; color: var(--muted); }
+  .card .val { font-size: 22px; font-weight: 600; color: var(--text); margin-top: 4px; }
+  .card .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ===== Tabs ===== */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid var(--border);
+    background: var(--panel);
+    border-radius: 8px 8px 0 0;
+    padding: 4px 8px 0 8px;
+    overflow-x: auto;
+  }
+  .tab {
+    background: transparent;
+    color: var(--muted);
+    border-radius: 6px 6px 0 0;
+    padding: 10px 16px;
+    font-size: 13px;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--accent); background: var(--accent-soft); }
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: white;
+    font-weight: 600;
+  }
+  .tab-panel { display: none; flex-direction: column; gap: 16px; }
+  .tab-panel.active { display: flex; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .panel h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #chart-wrap { position: relative; height: 320px; }
+  #trend-chart-wrap { position: relative; height: 340px; }
+  #map { height: 600px; border-radius: 6px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  thead th {
+    background: #f9fafb;
+    padding: 8px 6px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    white-space: nowrap;
+  }
+  thead th.sortable { cursor: pointer; user-select: none; }
+  thead th.sortable:hover { color: var(--accent); }
+  thead th.sorted-asc::after { content: " ▲"; color: var(--accent); }
+  thead th.sorted-desc::after { content: " ▼"; color: var(--accent); }
+  tbody td {
+    padding: 6px;
+    border-bottom: 1px solid #f3f4f6;
+    white-space: nowrap;
+  }
+  tbody td.addr { white-space: normal; min-width: 200px; }
+  tbody tr:hover { background: #fafbfc; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .badge {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  /* 物件類型 pills */
+  .cat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 16px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s;
+  }
+  .cat-pill:hover { border-color: var(--accent); color: var(--accent); }
+  .cat-pill.active { background: var(--accent); color: white; border-color: var(--accent); font-weight: 500; }
+  .cat-pill .cnt { font-size: 10px; opacity: 0.7; }
+  /* 類型 badge (表格用) */
+  .cat-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .cat-badge.新屋    { background: #dcfce7; color: #166534; }
+  .cat-badge.中古屋  { background: #fef3c7; color: #92400e; }
+  .cat-badge.預售屋  { background: #ede9fe; color: #5b21b6; }
+  #table-wrap, #cmp-table-wrap { max-height: 600px; overflow: auto; }
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .pagination .pager { display: flex; gap: 4px; }
+  .pagination button {
+    padding: 4px 10px;
+    background: white;
+    border: 1px solid var(--border);
+  }
+  .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ===== Trend tab ===== */
+  .trend-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    align-items: center;
+  }
+  .trend-controls select, .trend-controls input {
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .rank-list { font-size: 12px; }
+  .rank-list .rank-row {
+    display: grid;
+    grid-template-columns: 28px 1fr auto auto;
+    gap: 8px;
+    padding: 6px 4px;
+    border-bottom: 1px solid #f3f4f6;
+    align-items: center;
+  }
+  .rank-list .rank-row:hover { background: #fafbfc; }
+  .rank-num {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .rank-num.top { background: var(--warn); color: white; }
+  .rank-list .num { color: var(--text); font-weight: 500; }
+  .rank-list .sub { color: var(--muted); font-size: 11px; }
+
+  /* ===== Compare tab ===== */
+  .cmp-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    align-items: end;
+  }
+  .cmp-form .group label { font-size: 11px; color: var(--muted); }
+  .cmp-form select, .cmp-form input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .sim-bar {
+    display: inline-block;
+    height: 8px;
+    background: linear-gradient(to right, #10b981, #f59e0b, #ef4444);
+    border-radius: 4px;
+    vertical-align: middle;
+  }
+
+  #loading {
+    position: fixed;
+    inset: 0;
+    background: rgba(255,255,255,0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 100;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  footer a { color: var(--accent); }
+
+  .map-popup-title { font-weight: 600; font-size: 13px; color: var(--accent); margin-bottom: 4px; }
+  .map-popup-row { font-size: 12px; margin: 2px 0; }
+  .map-popup-row .lbl { color: var(--muted); display: inline-block; width: 70px; }
+  .map-legend {
+    background: white;
+    padding: 8px 10px;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .map-legend .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loading-text">載入資料中⋯</div>
+</div>
+
+<header>
+  <h1>台南房屋成交價查詢</h1>
+  <div class="sub" id="header-sub">資料來源：內政部不動產交易實價查詢服務 · 載入中⋯</div>
+</header>
+
+<div class="layout">
+  <!-- ===== Filters ===== -->
+  <aside class="filters">
+    <h2>查詢條件</h2>
+
+    <div class="filter-group">
+      <label>物件類型</label>
+      <div id="cat-pills" style="display:flex;gap:4px;flex-wrap:wrap;">
+        <!-- 由 JS 填入 -->
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label>成交日期</label>
+      <div class="range-row">
+        <input type="date" id="date-from" />
+        <span class="sep">~</span>
+        <input type="date" id="date-to" />
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label>
+        行政區
+        <button class="btn-link" id="dist-all">全選</button>
+        <button class="btn-link" id="dist-none">清除</button>
+      </label>
+      <div class="district-grid" id="district-grid"></div>
+    </div>
+
+    <div class="filter-group">
+      <label>地址 / 路段關鍵字</label>
+      <input type="text" id="addr-kw" placeholder="例如 中華東路、永華路" />
+    </div>
+
+    <div class="filter-group">
+      <label>總價（萬元）</label>
+      <div class="range-row">
+        <input type="number" id="price-min" placeholder="最低" min="0" />
+        <span class="sep">~</span>
+        <input type="number" id="price-max" placeholder="最高" min="0" />
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label>建物坪數</label>
+      <div class="range-row">
+        <input type="number" id="ping-min" placeholder="最低" min="0" />
+        <span class="sep">~</span>
+        <input type="number" id="ping-max" placeholder="最高" min="0" />
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label>屋齡（年）</label>
+      <div class="range-row">
+        <input type="number" id="age-min" placeholder="最低" min="0" />
+        <span class="sep">~</span>
+        <input type="number" id="age-max" placeholder="最高" min="0" />
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label>建物型態</label>
+      <select id="building-type">
+        <option value="">全部</option>
+      </select>
+    </div>
+
+    <div class="filter-actions">
+      <button class="btn-primary" id="btn-search">套用篩選</button>
+      <button class="btn-ghost" id="btn-reset">重設</button>
+    </div>
+  </aside>
+
+  <!-- ===== Main ===== -->
+  <main class="main">
+    <!-- Stat cards (always visible) -->
+    <div class="stat-cards">
+      <div class="card">
+        <div class="lbl">符合筆數</div>
+        <div class="val" id="stat-count">—</div>
+        <div class="sub" id="stat-count-sub">&nbsp;</div>
+      </div>
+      <div class="card">
+        <div class="lbl">中位總價</div>
+        <div class="val" id="stat-median-price">—</div>
+        <div class="sub">萬元</div>
+      </div>
+      <div class="card">
+        <div class="lbl">平均單價</div>
+        <div class="val" id="stat-avg-upp">—</div>
+        <div class="sub">萬元/坪</div>
+      </div>
+      <div class="card">
+        <div class="lbl">中位坪數</div>
+        <div class="val" id="stat-median-ping">—</div>
+        <div class="sub">坪</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="overview">📊 總覽</button>
+      <button class="tab" data-tab="map">📍 地圖</button>
+      <button class="tab" data-tab="trend">📈 趨勢</button>
+      <button class="tab" data-tab="compare">🔍 比價</button>
+    </div>
+
+    <!-- Tab: Overview -->
+    <div class="tab-panel active" id="tab-overview">
+      <div class="panel">
+        <h3>各行政區成交量</h3>
+        <div id="chart-wrap"><canvas id="dist-chart"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <h3>
+          成交明細 <span class="badge" id="result-badge">0</span>
+          <button class="btn-export" id="btn-export">⬇ 匯出 CSV</button>
+        </h3>
+        <div id="table-wrap">
+          <table id="result-table">
+            <thead>
+              <tr>
+                <th class="sortable" data-key="date">成交日期</th>
+                <th class="sortable" data-key="cat">類型</th>
+                <th class="sortable" data-key="d">行政區</th>
+                <th class="addr">地址</th>
+                <th>建物型態</th>
+                <th class="sortable num" data-key="total">總價(萬)</th>
+                <th class="sortable num" data-key="ping">坪數</th>
+                <th class="sortable num" data-key="upp">單價(萬/坪)</th>
+                <th>格局</th>
+                <th class="sortable num" data-key="age">屋齡</th>
+                <th>樓層</th>
+              </tr>
+            </thead>
+            <tbody id="result-body"></tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <span id="page-info">—</span>
+          <div class="pager">
+            <button id="prev-page">上一頁</button>
+            <button id="next-page">下一頁</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Map -->
+    <div class="tab-panel" id="tab-map">
+      <div class="panel">
+        <h3>地圖分布 <span class="sub" style="color:var(--muted);font-weight:400;font-size:11px;">圓圈大小 = 成交量；顏色深淺 = 平均單價</span></h3>
+        <div id="map"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Trend -->
+    <div class="tab-panel" id="tab-trend">
+      <div class="panel">
+        <h3>月度趨勢</h3>
+        <div class="trend-controls">
+          <label style="font-size:12px;color:var(--muted);">行政區：</label>
+          <select id="trend-district"><option value="">全部 (篩選後)</option></select>
+          <label style="font-size:12px;color:var(--muted);margin-left:8px;">指標：</label>
+          <select id="trend-metric">
+            <option value="upp">中位單價 (萬/坪)</option>
+            <option value="total">中位總價 (萬)</option>
+            <option value="ping">中位坪數</option>
+          </select>
+          <label style="margin-left:8px;font-size:12px;color:var(--muted);">
+            <input type="checkbox" id="trend-split-cat" /> 依類型拆線
+          </label>
+        </div>
+        <div id="trend-chart-wrap"><canvas id="trend-chart"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <h3>區排行榜（依現有篩選結果）</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+          <div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">🔥 成交量排行</div>
+            <div class="rank-list" id="rank-volume"></div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">💰 中位單價排行（萬/坪）</div>
+            <div class="rank-list" id="rank-price"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Compare -->
+    <div class="tab-panel" id="tab-compare">
+      <div class="panel">
+        <h3>比價條件</h3>
+        <div class="cmp-form">
+          <div class="group">
+            <label>物件類型</label>
+            <select id="cmp-cat">
+              <option value="">不限</option>
+              <option value="新屋">新屋</option>
+              <option value="中古屋">中古屋</option>
+              <option value="預售屋">預售屋</option>
+            </select>
+          </div>
+          <div class="group">
+            <label>行政區</label>
+            <select id="cmp-district"></select>
+          </div>
+          <div class="group">
+            <label>建物型態</label>
+            <select id="cmp-type"><option value="">不限</option></select>
+          </div>
+          <div class="group">
+            <label>目標坪數</label>
+            <input type="number" id="cmp-ping" placeholder="例如 30" min="0" step="1" />
+          </div>
+          <div class="group">
+            <label>目標屋齡（年）</label>
+            <input type="number" id="cmp-age" placeholder="例如 10" min="0" step="1" />
+          </div>
+          <div class="group">
+            <label>房數（選填）</label>
+            <input type="number" id="cmp-rooms" placeholder="例如 3" min="0" step="1" />
+          </div>
+          <div class="group" style="grid-column:span 1;">
+            <label>&nbsp;</label>
+            <button class="btn-primary" id="cmp-search">尋找可比物件</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>
+          可比成交（按相似度排序）
+          <span class="badge" id="cmp-badge">0</span>
+        </h3>
+        <div id="cmp-summary" style="font-size:12px;color:var(--muted);margin-bottom:10px;">輸入條件後按「尋找可比物件」</div>
+        <div id="cmp-table-wrap">
+          <table id="cmp-table">
+            <thead>
+              <tr>
+                <th>相似度</th>
+                <th>成交日期</th>
+                <th>地址</th>
+                <th>建物型態</th>
+                <th class="num">總價(萬)</th>
+                <th class="num">坪數</th>
+                <th class="num">單價(萬/坪)</th>
+                <th>格局</th>
+                <th class="num">屋齡</th>
+              </tr>
+            </thead>
+            <tbody id="cmp-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<footer>
+  資料由 <a href="https://plvr.land.moi.gov.tw/" target="_blank" rel="noopener">內政部不動產交易實價查詢服務</a> 開放資料提供，僅供參考 ·
+  <a href="https://github.com/" target="_blank" rel="noopener">原始碼</a>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

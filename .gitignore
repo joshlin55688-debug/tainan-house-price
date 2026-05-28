@@ -1,0 +1,16 @@
+# 下載快取（執行 fetch_data.py 會重新產生）
+data/raw/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 編輯器
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Claude Code 個人設定（不入 repo）
+.claude/
